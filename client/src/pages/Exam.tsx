@@ -1,11 +1,12 @@
 /**
  * EINBÜRGERUNGSTEST — Exam Mode
  * 30 random general questions + 3 random NRW questions = 33 total
- * Sequential: one question at a time, click to reveal, then Next
- * Final screen: score summary with pass/fail (≥17 correct = pass)
+ * - Answers are NOT revealed during the exam; only at the end in the review
+ * - Back / Forward navigation between questions
+ * - Final screen: score + full question-by-question review with correct answers shown
  */
 
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { generalQuestions, nrwQuestions, type Question } from "@/data/questions";
 import { useTranslation } from "@/contexts/TranslationContext";
@@ -14,7 +15,7 @@ const LETTER = ["A", "B", "C", "D"];
 const TOTAL_QUESTIONS = 33;
 const GENERAL_COUNT = 30;
 const NRW_COUNT = 3;
-const PASS_THRESHOLD = 17; // official passing score
+const PASS_THRESHOLD = 17;
 const EXAM_MINUTES = 60;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -76,7 +77,7 @@ function ExamHeader({
   timeLeft: number;
   onExit: () => void;
 }) {
-  const pct = ((current) / total) * 100;
+  const pct = (current / total) * 100;
   const isLow = timeLeft < 300;
 
   return (
@@ -90,7 +91,6 @@ function ExamHeader({
     >
       <div className="container">
         <div className="flex items-center justify-between py-3 gap-3">
-          {/* Logo */}
           <div className="flex items-center gap-3 min-w-0">
             <div
               className="flex-shrink-0 w-8 h-8 rounded flex items-center justify-center font-bold text-sm"
@@ -103,17 +103,17 @@ function ExamHeader({
               DE
             </div>
             <div>
-              <div className="font-bold text-sm" style={{ color: "var(--foreground)" }}>Exam Mode</div>
+              <div className="font-bold text-sm" style={{ color: "var(--foreground)" }}>
+                Exam Mode
+              </div>
               <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>
                 Question {Math.min(current + 1, total)} of {total}
               </div>
             </div>
           </div>
 
-          {/* Right */}
           <div className="flex items-center gap-2 flex-shrink-0">
             <TranslationToggle />
-            {/* Timer */}
             <div
               className="text-sm font-bold px-3 py-1.5 rounded"
               style={{
@@ -141,12 +141,16 @@ function ExamHeader({
 
         {/* Progress bar */}
         <div className="pb-3">
-          <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
+          <div
+            className="w-full h-1.5 rounded-full overflow-hidden"
+            style={{ background: "var(--border)" }}
+          >
             <div
               className="h-full rounded-full transition-all duration-500"
               style={{
                 width: `${pct}%`,
-                background: pct === 100 ? "oklch(0.55 0.18 145)" : "oklch(0.87 0.18 90)",
+                background:
+                  pct === 100 ? "oklch(0.55 0.18 145)" : "oklch(0.87 0.18 90)",
               }}
             />
           </div>
@@ -156,34 +160,18 @@ function ExamHeader({
   );
 }
 
-// ── Single exam question ──────────────────────────────────────────────────────
+// ── Single exam question (no reveal during exam) ──────────────────────────────
 function ExamQuestion({
   question,
-  questionNumber,
-  onAnswer,
+  selectedAnswer,
+  onSelect,
 }: {
   question: Question;
-  questionNumber: number;
-  onAnswer: (isCorrect: boolean) => void;
+  selectedAnswer: string | null;
+  onSelect: (answer: string) => void;
 }) {
   const { showTranslation } = useTranslation();
-  const [revealed, setRevealed] = useState(false);
-  const [wasCorrect, setWasCorrect] = useState<boolean | null>(null);
   const isNrw = question.section === "nrw";
-
-  // Reset state when question changes
-  useEffect(() => {
-    setRevealed(false);
-    setWasCorrect(null);
-  }, [question]);
-
-  const handleClick = (answerText: string) => {
-    if (revealed) return;
-    const correct = answerText === question.correct_answer;
-    setRevealed(true);
-    setWasCorrect(correct);
-    onAnswer(correct);
-  };
 
   return (
     <div className="question-card">
@@ -193,7 +181,9 @@ function ExamQuestion({
           className="flex-shrink-0 flex flex-col items-center justify-center rounded px-2 py-1 min-w-[3rem]"
           style={{
             background: isNrw ? "oklch(0.22 0.06 145)" : "oklch(0.20 0.04 260)",
-            border: `1px solid ${isNrw ? "oklch(0.40 0.12 145)" : "oklch(0.87 0.18 90 / 0.4)"}`,
+            border: `1px solid ${
+              isNrw ? "oklch(0.40 0.12 145)" : "oklch(0.87 0.18 90 / 0.4)"
+            }`,
           }}
         >
           <span
@@ -216,54 +206,71 @@ function ExamQuestion({
           </span>
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-base font-semibold leading-snug" style={{ color: "var(--foreground)" }}>
+          <p
+            className="text-base font-semibold leading-snug"
+            style={{ color: "var(--foreground)" }}
+          >
             {question.question}
           </p>
           {showTranslation && (
-            <p className="text-sm italic mt-1 leading-snug" style={{ color: "var(--muted-foreground)" }}>
+            <p
+              className="text-sm italic mt-1 leading-snug"
+              style={{ color: "var(--muted-foreground)" }}
+            >
               {question.question_en}
             </p>
           )}
         </div>
       </div>
 
-      {/* Answers */}
+      {/* Answer options — no green/red, just selected highlight */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {question.all_answers.map((ans, i) => {
-          const isCorrect = ans === question.correct_answer;
-          const stateClass = revealed ? (isCorrect ? "correct revealed" : "wrong revealed") : "";
+          const isSelected = ans === selectedAnswer;
           return (
             <button
               key={i}
-              className={`answer-option ${stateClass}`}
-              onClick={() => handleClick(ans)}
-              disabled={revealed}
+              className="answer-option"
+              onClick={() => onSelect(ans)}
+              style={{
+                background: isSelected
+                  ? "oklch(0.87 0.18 90 / 0.15)"
+                  : undefined,
+                borderColor: isSelected
+                  ? "oklch(0.87 0.18 90 / 0.7)"
+                  : undefined,
+              }}
             >
               <div className="flex items-start gap-3">
                 <span
                   className="flex-shrink-0 w-6 h-6 rounded flex items-center justify-center text-xs font-bold mt-0.5"
                   style={{
                     fontFamily: "'IBM Plex Mono', monospace",
-                    background: revealed
-                      ? isCorrect ? "oklch(0.55 0.18 145 / 0.3)" : "oklch(0.55 0.22 25 / 0.3)"
+                    background: isSelected
+                      ? "oklch(0.87 0.18 90 / 0.3)"
                       : "var(--border)",
-                    color: revealed
-                      ? isCorrect ? "var(--correct-text)" : "var(--wrong-text)"
+                    color: isSelected
+                      ? "oklch(0.87 0.18 90)"
                       : "var(--muted-foreground)",
                   }}
                 >
-                  {revealed ? (isCorrect ? "✓" : "✗") : LETTER[i]}
+                  {LETTER[i]}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium leading-snug">{ans}</div>
+                  <div
+                    className="text-sm font-medium leading-snug"
+                    style={{
+                      color: isSelected
+                        ? "oklch(0.87 0.18 90)"
+                        : "var(--foreground)",
+                    }}
+                  >
+                    {ans}
+                  </div>
                   {showTranslation && (
                     <div
                       className="text-xs italic mt-0.5 leading-snug"
-                      style={{
-                        color: revealed
-                          ? isCorrect ? "oklch(0.65 0.12 145)" : "oklch(0.60 0.12 25)"
-                          : "var(--muted-foreground)",
-                      }}
+                      style={{ color: "var(--muted-foreground)" }}
                     >
                       {question.all_answers_en?.[i] ?? ans}
                     </div>
@@ -275,35 +282,45 @@ function ExamQuestion({
         })}
       </div>
 
-      {revealed && (
+      {selectedAnswer && (
         <div
-          className="mt-3 text-xs font-medium flex items-center gap-1.5"
-          style={{ color: wasCorrect ? "oklch(0.80 0.15 145)" : "oklch(0.78 0.15 25)" }}
+          className="mt-3 text-xs flex items-center gap-1.5"
+          style={{ color: "oklch(0.87 0.18 90 / 0.7)" }}
         >
-          {wasCorrect ? "✓ Correct!" : "✗ Wrong — the correct answer is highlighted above."}
+          ✓ Answer selected — results revealed at the end
         </div>
       )}
     </div>
   );
 }
 
-// ── Score summary ─────────────────────────────────────────────────────────────
+// ── Score summary (with full review showing correct answers) ──────────────────
 function ScoreSummary({
   questions,
-  answers,
+  selectedAnswers,
   timeTaken,
   onRetry,
   onHome,
 }: {
   questions: Question[];
-  answers: (boolean | null)[];
+  selectedAnswers: (string | null)[];
   timeTaken: number;
   onRetry: () => void;
   onHome: () => void;
 }) {
-  const correct = answers.filter(Boolean).length;
-  const passed = correct >= PASS_THRESHOLD;
-  const pct = Math.round((correct / TOTAL_QUESTIONS) * 100);
+  const { showTranslation } = useTranslation();
+
+  const results = questions.map((q, i) => ({
+    question: q,
+    selected: selectedAnswers[i],
+    correct: q.correct_answer,
+    isCorrect: selectedAnswers[i] === q.correct_answer,
+    answered: selectedAnswers[i] !== null,
+  }));
+
+  const correctCount = results.filter((r) => r.isCorrect).length;
+  const passed = correctCount >= PASS_THRESHOLD;
+  const pct = Math.round((correctCount / TOTAL_QUESTIONS) * 100);
 
   return (
     <div className="min-h-screen" style={{ background: "var(--background)" }}>
@@ -314,13 +331,17 @@ function ScoreSummary({
           className="rounded-xl p-8 mb-6 text-center"
           style={{
             background: passed ? "oklch(0.18 0.06 145)" : "oklch(0.17 0.05 25)",
-            border: `2px solid ${passed ? "oklch(0.55 0.18 145)" : "oklch(0.55 0.22 25)"}`,
+            border: `2px solid ${
+              passed ? "oklch(0.55 0.18 145)" : "oklch(0.55 0.22 25)"
+            }`,
           }}
         >
           <div className="text-5xl mb-3">{passed ? "🎉" : "📚"}</div>
           <h1
             className="text-3xl font-bold mb-2"
-            style={{ color: passed ? "oklch(0.80 0.15 145)" : "oklch(0.78 0.15 25)" }}
+            style={{
+              color: passed ? "oklch(0.80 0.15 145)" : "oklch(0.78 0.15 25)",
+            }}
           >
             {passed ? "Bestanden!" : "Nicht bestanden"}
           </h1>
@@ -337,8 +358,12 @@ function ScoreSummary({
         {/* Stats grid */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
           {[
-            { label: "Correct", value: correct, color: "oklch(0.80 0.15 145)" },
-            { label: "Wrong", value: TOTAL_QUESTIONS - correct, color: "oklch(0.78 0.15 25)" },
+            { label: "Correct", value: correctCount, color: "oklch(0.80 0.15 145)" },
+            {
+              label: "Wrong",
+              value: TOTAL_QUESTIONS - correctCount,
+              color: "oklch(0.78 0.15 25)",
+            },
             { label: "Score", value: `${pct}%`, color: "oklch(0.87 0.18 90)" },
             { label: "Time", value: formatTime(timeTaken), color: "var(--foreground)" },
           ].map((stat) => (
@@ -347,10 +372,18 @@ function ScoreSummary({
               className="rounded-lg p-4 text-center"
               style={{ background: "var(--card)", border: "1px solid var(--border)" }}
             >
-              <div className="text-2xl font-bold" style={{ color: stat.color, fontFamily: "'IBM Plex Mono', monospace" }}>
+              <div
+                className="text-2xl font-bold"
+                style={{
+                  color: stat.color,
+                  fontFamily: "'IBM Plex Mono', monospace",
+                }}
+              >
                 {stat.value}
               </div>
-              <div className="text-xs mt-1" style={{ color: "var(--muted-foreground)" }}>{stat.label}</div>
+              <div className="text-xs mt-1" style={{ color: "var(--muted-foreground)" }}>
+                {stat.label}
+              </div>
             </div>
           ))}
         </div>
@@ -358,67 +391,194 @@ function ScoreSummary({
         {/* Passing info */}
         <div
           className="rounded-lg p-4 mb-6 text-sm"
-          style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--muted-foreground)" }}
+          style={{
+            background: "var(--card)",
+            border: "1px solid var(--border)",
+            color: "var(--muted-foreground)",
+          }}
         >
-          <strong style={{ color: "var(--foreground)" }}>Official passing threshold:</strong> {PASS_THRESHOLD} out of {TOTAL_QUESTIONS} correct ({Math.round((PASS_THRESHOLD / TOTAL_QUESTIONS) * 100)}%).
-          The real exam consists of 33 questions drawn from the general catalog and your state-specific questions.
+          <strong style={{ color: "var(--foreground)" }}>
+            Official passing threshold:
+          </strong>{" "}
+          {PASS_THRESHOLD} out of {TOTAL_QUESTIONS} correct (
+          {Math.round((PASS_THRESHOLD / TOTAL_QUESTIONS) * 100)}%). The real exam
+          consists of 33 questions drawn from the general catalog and your
+          state-specific questions.
         </div>
 
-        {/* Question review */}
+        {/* Full question review */}
         <h2 className="text-base font-bold mb-3" style={{ color: "var(--foreground)" }}>
           Question Review
         </h2>
-        <div className="space-y-2 mb-8">
-          {questions.map((q, i) => {
-            const correct = answers[i] === true;
-            const answered = answers[i] !== null;
+        <div className="space-y-3 mb-8">
+          {results.map((r, i) => {
+            const isNrw = r.question.section === "nrw";
             return (
               <div
                 key={i}
-                className="rounded-lg p-3 flex items-start gap-3"
+                className="rounded-lg overflow-hidden"
                 style={{
-                  background: answered
-                    ? correct ? "oklch(0.18 0.06 145)" : "oklch(0.17 0.05 25)"
-                    : "var(--card)",
-                  border: `1px solid ${answered
-                    ? correct ? "oklch(0.40 0.12 145)" : "oklch(0.40 0.15 25)"
-                    : "var(--border)"}`,
+                  border: `1px solid ${
+                    r.isCorrect
+                      ? "oklch(0.40 0.12 145)"
+                      : r.answered
+                      ? "oklch(0.40 0.15 25)"
+                      : "var(--border)"
+                  }`,
                 }}
               >
-                <span
-                  className="flex-shrink-0 w-6 h-6 rounded flex items-center justify-center text-xs font-bold"
+                {/* Question row */}
+                <div
+                  className="flex items-start gap-3 p-3"
                   style={{
-                    fontFamily: "'IBM Plex Mono', monospace",
-                    background: answered
-                      ? correct ? "oklch(0.55 0.18 145 / 0.3)" : "oklch(0.55 0.22 25 / 0.3)"
-                      : "var(--border)",
-                    color: answered
-                      ? correct ? "oklch(0.80 0.15 145)" : "oklch(0.78 0.15 25)"
-                      : "var(--muted-foreground)",
+                    background: r.isCorrect
+                      ? "oklch(0.18 0.06 145)"
+                      : r.answered
+                      ? "oklch(0.17 0.05 25)"
+                      : "var(--card)",
                   }}
                 >
-                  {answered ? (correct ? "✓" : "✗") : "–"}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium leading-snug" style={{ color: "var(--foreground)" }}>
-                    {q.question}
-                  </div>
-                  {!correct && answered && (
-                    <div className="text-xs mt-0.5" style={{ color: "oklch(0.80 0.15 145)" }}>
-                      Correct: {q.correct_answer}
+                  {/* Status icon */}
+                  <span
+                    className="flex-shrink-0 w-6 h-6 rounded flex items-center justify-center text-xs font-bold mt-0.5"
+                    style={{
+                      background: r.isCorrect
+                        ? "oklch(0.55 0.18 145 / 0.3)"
+                        : r.answered
+                        ? "oklch(0.55 0.22 25 / 0.3)"
+                        : "var(--border)",
+                      color: r.isCorrect
+                        ? "oklch(0.80 0.15 145)"
+                        : r.answered
+                        ? "oklch(0.78 0.15 25)"
+                        : "var(--muted-foreground)",
+                    }}
+                  >
+                    {r.isCorrect ? "✓" : r.answered ? "✗" : "–"}
+                  </span>
+
+                  <div className="flex-1 min-w-0">
+                    <div
+                      className="text-sm font-semibold leading-snug"
+                      style={{ color: "var(--foreground)" }}
+                    >
+                      {i + 1}. {r.question.question}
                     </div>
-                  )}
+                    {showTranslation && (
+                      <div
+                        className="text-xs italic mt-0.5"
+                        style={{ color: "var(--muted-foreground)" }}
+                      >
+                        {r.question.question_en}
+                      </div>
+                    )}
+                  </div>
+
+                  <span
+                    className="flex-shrink-0 text-xs px-2 py-0.5 rounded self-start"
+                    style={{
+                      fontFamily: "'IBM Plex Mono', monospace",
+                      background: isNrw
+                        ? "oklch(0.22 0.06 145)"
+                        : "oklch(0.20 0.04 260)",
+                      color: isNrw
+                        ? "oklch(0.65 0.15 145)"
+                        : "oklch(0.87 0.18 90)",
+                    }}
+                  >
+                    {isNrw ? "NRW" : `Q${r.question.number}`}
+                  </span>
                 </div>
-                <span
-                  className="flex-shrink-0 text-xs px-2 py-0.5 rounded"
-                  style={{
-                    fontFamily: "'IBM Plex Mono', monospace",
-                    background: q.section === "nrw" ? "oklch(0.22 0.06 145)" : "oklch(0.20 0.04 260)",
-                    color: q.section === "nrw" ? "oklch(0.65 0.15 145)" : "oklch(0.87 0.18 90)",
-                  }}
+
+                {/* Answer breakdown */}
+                <div
+                  className="px-3 pb-3 pt-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5"
+                  style={{ background: "var(--card)" }}
                 >
-                  {q.section === "nrw" ? "NRW" : `Q${q.number}`}
-                </span>
+                  {r.question.all_answers.map((ans, ai) => {
+                    const isCorrectAns = ans === r.correct;
+                    const isSelectedAns = ans === r.selected;
+                    const showSelected = isSelectedAns && !isCorrectAns; // wrong selection
+
+                    return (
+                      <div
+                        key={ai}
+                        className="flex items-start gap-2 rounded px-2 py-1.5"
+                        style={{
+                          background: isCorrectAns
+                            ? "oklch(0.55 0.18 145 / 0.15)"
+                            : showSelected
+                            ? "oklch(0.55 0.22 25 / 0.12)"
+                            : "transparent",
+                          border: `1px solid ${
+                            isCorrectAns
+                              ? "oklch(0.55 0.18 145 / 0.4)"
+                              : showSelected
+                              ? "oklch(0.55 0.22 25 / 0.3)"
+                              : "transparent"
+                          }`,
+                        }}
+                      >
+                        <span
+                          className="flex-shrink-0 w-5 h-5 rounded flex items-center justify-center text-xs font-bold"
+                          style={{
+                            fontFamily: "'IBM Plex Mono', monospace",
+                            background: isCorrectAns
+                              ? "oklch(0.55 0.18 145 / 0.3)"
+                              : showSelected
+                              ? "oklch(0.55 0.22 25 / 0.3)"
+                              : "var(--border)",
+                            color: isCorrectAns
+                              ? "oklch(0.80 0.15 145)"
+                              : showSelected
+                              ? "oklch(0.78 0.15 25)"
+                              : "var(--muted-foreground)",
+                          }}
+                        >
+                          {isCorrectAns ? "✓" : showSelected ? "✗" : LETTER[ai]}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div
+                            className="text-xs font-medium leading-snug"
+                            style={{
+                              color: isCorrectAns
+                                ? "oklch(0.80 0.15 145)"
+                                : showSelected
+                                ? "oklch(0.78 0.15 25)"
+                                : "var(--muted-foreground)",
+                            }}
+                          >
+                            {ans}
+                            {isCorrectAns && (
+                              <span
+                                className="ml-1 text-xs"
+                                style={{ color: "oklch(0.65 0.12 145)" }}
+                              >
+                                (correct)
+                              </span>
+                            )}
+                            {showSelected && (
+                              <span
+                                className="ml-1 text-xs"
+                                style={{ color: "oklch(0.60 0.12 25)" }}
+                              >
+                                (your answer)
+                              </span>
+                            )}
+                          </div>
+                          {showTranslation && (
+                            <div
+                              className="text-xs italic"
+                              style={{ color: "oklch(0.45 0.01 260)" }}
+                            >
+                              {r.question.all_answers_en?.[ai] ?? ans}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             );
           })}
@@ -429,14 +589,21 @@ function ScoreSummary({
           <button
             onClick={onRetry}
             className="px-6 py-3 rounded font-semibold text-sm transition-all"
-            style={{ background: "oklch(0.87 0.18 90)", color: "oklch(0.12 0.02 260)" }}
+            style={{
+              background: "oklch(0.87 0.18 90)",
+              color: "oklch(0.12 0.02 260)",
+            }}
           >
             Try Again (New Questions)
           </button>
           <button
             onClick={onHome}
             className="px-6 py-3 rounded font-semibold text-sm transition-all"
-            style={{ background: "var(--secondary)", color: "var(--foreground)", border: "1px solid var(--border)" }}
+            style={{
+              background: "var(--secondary)",
+              color: "var(--foreground)",
+              border: "1px solid var(--border)",
+            }}
           >
             Back to Question Browser
           </button>
@@ -447,7 +614,13 @@ function ScoreSummary({
 }
 
 // ── Start screen ──────────────────────────────────────────────────────────────
-function StartScreen({ onStart, onHome }: { onStart: () => void; onHome: () => void }) {
+function StartScreen({
+  onStart,
+  onHome,
+}: {
+  onStart: () => void;
+  onHome: () => void;
+}) {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "var(--background)" }}>
       <FlagStripe />
@@ -466,28 +639,46 @@ function StartScreen({ onStart, onHome }: { onStart: () => void; onHome: () => v
           >
             DE
           </div>
-          <h1 className="text-2xl font-bold text-center mb-2" style={{ color: "var(--foreground)" }}>
+          <h1
+            className="text-2xl font-bold text-center mb-2"
+            style={{ color: "var(--foreground)" }}
+          >
             Einbürgerungstest
           </h1>
           <p className="text-center text-sm mb-6" style={{ color: "var(--muted-foreground)" }}>
             Exam Simulation
           </p>
 
-          {/* Exam details */}
           <div className="space-y-2 mb-6">
             {[
-              ["Questions", `${TOTAL_QUESTIONS} total (${GENERAL_COUNT} general + ${NRW_COUNT} NRW)`],
+              [
+                "Questions",
+                `${TOTAL_QUESTIONS} total (${GENERAL_COUNT} general + ${NRW_COUNT} NRW)`,
+              ],
               ["Time limit", `${EXAM_MINUTES} minutes`],
-              ["Passing score", `${PASS_THRESHOLD} correct (${Math.round((PASS_THRESHOLD / TOTAL_QUESTIONS) * 100)}%)`],
-              ["Format", "One question at a time · Click to reveal answer"],
+              [
+                "Passing score",
+                `${PASS_THRESHOLD} correct (${Math.round(
+                  (PASS_THRESHOLD / TOTAL_QUESTIONS) * 100
+                )}%)`,
+              ],
+              ["Answer reveal", "Results shown only at the end"],
+              ["Navigation", "Go back to change answers before submitting"],
             ].map(([label, value]) => (
               <div
                 key={label}
                 className="flex items-start justify-between gap-4 py-2"
                 style={{ borderBottom: "1px solid var(--border)" }}
               >
-                <span className="text-sm" style={{ color: "var(--muted-foreground)" }}>{label}</span>
-                <span className="text-sm font-medium text-right" style={{ color: "var(--foreground)" }}>{value}</span>
+                <span className="text-sm" style={{ color: "var(--muted-foreground)" }}>
+                  {label}
+                </span>
+                <span
+                  className="text-sm font-medium text-right"
+                  style={{ color: "var(--foreground)" }}
+                >
+                  {value}
+                </span>
               </div>
             ))}
           </div>
@@ -496,14 +687,21 @@ function StartScreen({ onStart, onHome }: { onStart: () => void; onHome: () => v
             <button
               onClick={onStart}
               className="w-full py-3 rounded-lg font-bold text-base transition-all"
-              style={{ background: "oklch(0.87 0.18 90)", color: "oklch(0.12 0.02 260)" }}
+              style={{
+                background: "oklch(0.87 0.18 90)",
+                color: "oklch(0.12 0.02 260)",
+              }}
             >
               Start Exam
             </button>
             <button
               onClick={onHome}
               className="w-full py-3 rounded-lg font-medium text-sm transition-all"
-              style={{ background: "var(--secondary)", color: "var(--muted-foreground)", border: "1px solid var(--border)" }}
+              style={{
+                background: "var(--secondary)",
+                color: "var(--muted-foreground)",
+                border: "1px solid var(--border)",
+              }}
             >
               Back to Question Browser
             </button>
@@ -522,8 +720,8 @@ export default function Exam() {
   const [phase, setPhase] = useState<ExamPhase>("start");
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
-  const [answers, setAnswers] = useState<(boolean | null)[]>([]);
-  const [revealed, setRevealed] = useState(false);
+  // selectedAnswers stores the text of the chosen answer (or null if not yet answered)
+  const [selectedAnswers, setSelectedAnswers] = useState<(string | null)[]>([]);
   const [timeLeft, setTimeLeft] = useState(EXAM_MINUTES * 60);
   const [timeTaken, setTimeTaken] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -532,8 +730,7 @@ export default function Exam() {
     const qs = generateExam();
     setQuestions(qs);
     setCurrentIdx(0);
-    setAnswers(new Array(qs.length).fill(null));
-    setRevealed(false);
+    setSelectedAnswers(new Array(qs.length).fill(null));
     setTimeLeft(EXAM_MINUTES * 60);
     setTimeTaken(0);
     setPhase("running");
@@ -556,26 +753,30 @@ export default function Exam() {
     return () => clearInterval(timerRef.current!);
   }, [phase]);
 
-  const handleAnswer = useCallback((isCorrect: boolean) => {
-    setAnswers((prev) => {
-      const next = [...prev];
-      next[currentIdx] = isCorrect;
-      return next;
-    });
-    setRevealed(true);
-  }, [currentIdx]);
+  const handleSelect = useCallback(
+    (answer: string) => {
+      setSelectedAnswers((prev) => {
+        const next = [...prev];
+        next[currentIdx] = answer;
+        return next;
+      });
+    },
+    [currentIdx]
+  );
 
   const handleNext = useCallback(() => {
     if (currentIdx + 1 >= TOTAL_QUESTIONS) {
-      // Finish
       clearInterval(timerRef.current!);
       setTimeTaken(EXAM_MINUTES * 60 - timeLeft);
       setPhase("done");
     } else {
       setCurrentIdx((i) => i + 1);
-      setRevealed(false);
     }
   }, [currentIdx, timeLeft]);
+
+  const handleBack = useCallback(() => {
+    if (currentIdx > 0) setCurrentIdx((i) => i - 1);
+  }, [currentIdx]);
 
   const handleExit = useCallback(() => {
     clearInterval(timerRef.current!);
@@ -590,7 +791,7 @@ export default function Exam() {
     return (
       <ScoreSummary
         questions={questions}
-        answers={answers}
+        selectedAnswers={selectedAnswers}
         timeTaken={timeTaken}
         onRetry={startExam}
         onHome={() => navigate("/")}
@@ -599,6 +800,8 @@ export default function Exam() {
   }
 
   const currentQuestion = questions[currentIdx];
+  const answeredCount = selectedAnswers.filter((a) => a !== null).length;
+  const isLast = currentIdx + 1 >= TOTAL_QUESTIONS;
 
   return (
     <div className="min-h-screen" style={{ background: "var(--background)" }}>
@@ -611,58 +814,92 @@ export default function Exam() {
       />
 
       <main className="container py-6 pb-16">
-        {/* Question counter pills */}
+        {/* Question counter pills — clickable to jump */}
         <div className="flex flex-wrap gap-1.5 mb-5">
           {questions.map((_, i) => (
-            <div
+            <button
               key={i}
-              className="w-6 h-6 rounded text-xs flex items-center justify-center font-medium"
+              onClick={() => setCurrentIdx(i)}
+              className="w-6 h-6 rounded text-xs flex items-center justify-center font-medium transition-all"
               style={{
                 fontFamily: "'IBM Plex Mono', monospace",
                 background:
                   i === currentIdx
                     ? "oklch(0.87 0.18 90)"
-                    : answers[i] === true
-                    ? "oklch(0.18 0.06 145)"
-                    : answers[i] === false
-                    ? "oklch(0.17 0.05 25)"
+                    : selectedAnswers[i] !== null
+                    ? "oklch(0.22 0.04 260)"
                     : "var(--secondary)",
                 color:
                   i === currentIdx
                     ? "oklch(0.12 0.02 260)"
-                    : answers[i] === true
-                    ? "oklch(0.80 0.15 145)"
-                    : answers[i] === false
-                    ? "oklch(0.78 0.15 25)"
+                    : selectedAnswers[i] !== null
+                    ? "oklch(0.70 0.10 90)"
                     : "var(--muted-foreground)",
-                border: i === currentIdx ? "none" : "1px solid var(--border)",
+                border:
+                  i === currentIdx
+                    ? "none"
+                    : selectedAnswers[i] !== null
+                    ? "1px solid oklch(0.87 0.18 90 / 0.35)"
+                    : "1px solid var(--border)",
               }}
             >
               {i + 1}
-            </div>
+            </button>
           ))}
+        </div>
+
+        {/* Answered count hint */}
+        <div className="mb-4 text-xs" style={{ color: "var(--muted-foreground)" }}>
+          {answeredCount} of {TOTAL_QUESTIONS} answered
+          {answeredCount < TOTAL_QUESTIONS && (
+            <span style={{ color: "oklch(0.78 0.15 25 / 0.8)" }}>
+              {" "}— {TOTAL_QUESTIONS - answeredCount} unanswered
+            </span>
+          )}
         </div>
 
         {/* Current question */}
         <ExamQuestion
           key={currentIdx}
           question={currentQuestion}
-          questionNumber={currentIdx + 1}
-          onAnswer={handleAnswer}
+          selectedAnswer={selectedAnswers[currentIdx]}
+          onSelect={handleSelect}
         />
 
-        {/* Next button — appears after answer is revealed */}
-        {revealed && (
-          <div className="mt-4 flex justify-end">
-            <button
-              onClick={handleNext}
-              className="px-6 py-3 rounded-lg font-bold text-sm transition-all"
-              style={{ background: "oklch(0.87 0.18 90)", color: "oklch(0.12 0.02 260)" }}
-            >
-              {currentIdx + 1 >= TOTAL_QUESTIONS ? "See Results →" : "Next Question →"}
-            </button>
-          </div>
-        )}
+        {/* Navigation buttons */}
+        <div className="mt-5 flex items-center justify-between gap-3">
+          {/* Back button */}
+          <button
+            onClick={handleBack}
+            disabled={currentIdx === 0}
+            className="px-5 py-2.5 rounded-lg font-semibold text-sm transition-all"
+            style={{
+              background: currentIdx === 0 ? "var(--secondary)" : "var(--secondary)",
+              color: currentIdx === 0 ? "oklch(0.40 0.01 260)" : "var(--foreground)",
+              border: "1px solid var(--border)",
+              opacity: currentIdx === 0 ? 0.4 : 1,
+              cursor: currentIdx === 0 ? "not-allowed" : "pointer",
+            }}
+          >
+            ← Back
+          </button>
+
+          {/* Next / Submit */}
+          <button
+            onClick={handleNext}
+            className="px-6 py-2.5 rounded-lg font-bold text-sm transition-all"
+            style={{
+              background: isLast
+                ? selectedAnswers[currentIdx] !== null
+                  ? "oklch(0.55 0.18 145)"
+                  : "oklch(0.87 0.18 90)"
+                : "oklch(0.87 0.18 90)",
+              color: "oklch(0.12 0.02 260)",
+            }}
+          >
+            {isLast ? "Submit & See Results →" : "Next →"}
+          </button>
+        </div>
       </main>
     </div>
   );
